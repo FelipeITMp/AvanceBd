@@ -1,57 +1,69 @@
 package bdpryfinal;
 
-import java.sql.Connection;
-import java.sql.Date;
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
-import java.sql.SQLIntegrityConstraintViolationException;
-import java.sql.SQLException;
-import java.sql.Statement;
-import java.sql.Time;
+import java.sql.*;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.List;
 
-/** Acceso a datos de Cita: listar agenda, crear y actualizar estado. */
+/** DAO JDBC para tabla Cita: agenda, creación, estado y utilidades de paciente. */
 public class CitaDaoJdbc {
 
-  /** Fila para mostrar en la agenda (simplificada). */
-  public static class AgendaItem {
+  /* ====== DTOs ligeros (alineados con la versión final) ====== */
+  public static final class AgendaItem {
+    public final int id;
     public final String hora;        // HH:mm
-    public final String paciente;    // nombre del paciente
-    public final String estado;      // 'Pendiente','Confirmada',...
+    public final String paciente;    // nombre (o identificación si nombre vacío)
+    public final String estado;      // 'Pendiente','Confirmada','Cancelada','Atendida'
     public final String observacion; // puede ser null
 
-    public AgendaItem(String hora, String paciente, String estado, String observacion) {
-      this.hora = hora;
-      this.paciente = paciente;
-      this.estado = estado;
-      this.observacion = observacion;
+    public AgendaItem(int id, String hora, String paciente, String estado, String observacion) {
+      this.id = id; this.hora = hora; this.paciente = paciente; this.estado = estado; this.observacion = observacion;
     }
 
     @Override public String toString() {
       return hora + " | " + paciente + " | " + estado +
-             (observacion == null || observacion.isBlank() ? "" : " | " + observacion);
+          (observacion == null || observacion.isBlank() ? "" : " | " + observacion);
     }
   }
 
-  /** Devuelve la agenda del doctor (por id) en una fecha dada. */
-  public List<AgendaItem> agendaDeDoctorEnFecha(int doctorId, LocalDate fecha) {
-    final String sql =
-        "SELECT TIME_FORMAT(c.hora, '%H:%i') AS hhmm, p.nombre AS paciente, c.estado, c.observacion " +
-        "FROM Cita c JOIN Paciente p ON p.id = c.paciente_id " +
-        "WHERE c.doctor_id = ? AND c.fecha = ? " +
-        "ORDER BY c.hora";
+  public static final class CitaPacItem {
+    public final int id;
+    public final String fecha;       // yyyy-MM-dd
+    public final String hora;        // HH:mm
+    public final String doctor;      // nombre (o identificación si vacío)
+    public final String estado;
+    public final String observacion;
+    public CitaPacItem(int id, String fecha, String hora, String doctor, String estado, String obs) {
+      this.id = id; this.fecha = fecha; this.hora = hora; this.doctor = doctor; this.estado = estado; this.observacion = obs;
+    }
+  }
 
+  /* ====== Agenda por DOCTOR (usando código DOC-xxx) ====== */
+  public List<AgendaItem> agendaDeDoctor(String codDoctor, LocalDate fecha) {
+    String sql = """
+      SELECT c.id,
+             DATE_FORMAT(c.hora, '%H:%i') AS hhmm,
+             COALESCE(
+               NULLIF(TRIM(CONCAT_WS(' ', p.nombre1, p.nombre2, p.apellido1, p.apellido2)), ''),
+               p.identificacion
+             ) AS paciente,
+             c.estado,
+             c.observacion
+      FROM Cita c
+      JOIN Doctor d   ON d.id = c.doctor_id
+      JOIN Paciente p ON p.id = c.paciente_id
+      WHERE d.identificacion = ? AND c.fecha = ?
+      ORDER BY c.hora
+      """;
     List<AgendaItem> out = new ArrayList<>();
-    try (Connection con = Db.get();
-         PreparedStatement ps = con.prepareStatement(sql)) {
-      ps.setInt(1, doctorId);
+    try (Connection cn = Db.get(); PreparedStatement ps = cn.prepareStatement(sql)) {
+      ps.setString(1, codDoctor);
       ps.setDate(2, Date.valueOf(fecha));
       try (ResultSet rs = ps.executeQuery()) {
         while (rs.next()) {
           out.add(new AgendaItem(
+              rs.getInt("id"),
               rs.getString("hhmm"),
               rs.getString("paciente"),
               rs.getString("estado"),
@@ -59,49 +71,162 @@ public class CitaDaoJdbc {
           ));
         }
       }
+      return out;
     } catch (SQLException e) {
-      throw new RuntimeException("Error leyendo agenda del doctorId=" + doctorId + " en " + fecha, e);
+      throw new RuntimeException("Error listando agenda: " + e.getMessage(), e);
     }
-    return out;
   }
 
-  /** Crea una cita. Retorna el id generado.
-   *  Lanza IllegalStateException si la franja del doctor ya está ocupada. */
-  public int crearCita(int pacienteId, int doctorId,
-                       LocalDate fecha, LocalTime hora,
-                       String estado, String observacion) {
-    final String sql = "INSERT INTO Cita(paciente_id, doctor_id, fecha, hora, estado, observacion) " +
-                       "VALUES (?,?,?,?,?,?)";
-    try (Connection con = Db.get();
-         PreparedStatement ps = con.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
+  /* ====== Creación de citas (por ids o por códigos) ====== */
+  public int crear(int pacienteId, int doctorId, LocalDate fecha, LocalTime hora,
+                   String estado, String observacion) {
+    String sql = "INSERT INTO Cita(paciente_id, doctor_id, fecha, hora, estado, observacion) VALUES (?,?,?,?,?,?)";
+    try (Connection cn = Db.get(); PreparedStatement ps = cn.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
       ps.setInt(1, pacienteId);
       ps.setInt(2, doctorId);
       ps.setDate(3, Date.valueOf(fecha));
       ps.setTime(4, Time.valueOf(hora));
-      ps.setString(5, estado);         // 'Pendiente','Confirmada','Cancelada','Atendida'
-      ps.setString(6, observacion);
+      ps.setString(5, estado);
+      if (observacion == null || observacion.isBlank()) ps.setNull(6, Types.VARCHAR);
+      else ps.setString(6, observacion);
       ps.executeUpdate();
-      try (ResultSet rs = ps.getGeneratedKeys()) {
-        rs.next();
-        return rs.getInt(1);
-      }
-    } catch (SQLIntegrityConstraintViolationException dup) { // UNIQUE (doctor_id,fecha,hora)
-      throw new IllegalStateException("La franja del doctor ya está ocupada");
+      try (ResultSet gk = ps.getGeneratedKeys()) { if (gk.next()) return gk.getInt(1); }
+      throw new IllegalStateException("No se obtuvo ID generado para la cita");
     } catch (SQLException e) {
-      throw new RuntimeException("Error creando cita", e);
+      // Manejo de UNIQUE(doctor_id,fecha,hora)
+      if ("23000".equals(e.getSQLState())) throw new IllegalStateException("Ya existe una cita para ese doctor en esa fecha y hora.", e);
+      throw new RuntimeException("Error creando cita: " + e.getMessage(), e);
     }
   }
 
-  /** Actualiza el estado de una cita existente. */
+  public int crearPorCodigos(String codPaciente, String codDoctor, LocalDate fecha, LocalTime hora,
+                             String estado, String observacion) {
+    String find = """
+      SELECT p.id AS pid, d.id AS did
+      FROM Paciente p, Doctor d
+      WHERE p.identificacion = ? AND d.identificacion = ?
+      """;
+    try (Connection cn = Db.get()) {
+      cn.setAutoCommit(false);
+      try (PreparedStatement ps = cn.prepareStatement(find)) {
+        ps.setString(1, codPaciente);
+        ps.setString(2, codDoctor);
+        try (ResultSet rs = ps.executeQuery()) {
+          if (!rs.next()) throw new IllegalArgumentException("Paciente o Doctor no encontrados por sus códigos.");
+          int pid = rs.getInt("pid");
+          int did = rs.getInt("did");
+          String ins = "INSERT INTO Cita(paciente_id, doctor_id, fecha, hora, estado, observacion) VALUES (?,?,?,?,?,?)";
+          try (PreparedStatement insPs = cn.prepareStatement(ins, Statement.RETURN_GENERATED_KEYS)) {
+            insPs.setInt(1, pid);
+            insPs.setInt(2, did);
+            insPs.setDate(3, Date.valueOf(fecha));
+            insPs.setTime(4, Time.valueOf(hora));
+            insPs.setString(5, estado);
+            if (observacion == null || observacion.isBlank()) insPs.setNull(6, Types.VARCHAR);
+            else insPs.setString(6, observacion);
+            insPs.executeUpdate();
+            try (ResultSet gk = insPs.getGeneratedKeys()) {
+              if (gk.next()) { cn.commit(); return gk.getInt(1); }
+            }
+            throw new IllegalStateException("No se obtuvo ID generado para la cita");
+          }
+        }
+      } catch (SQLException ex) {
+        cn.rollback();
+        if ("23000".equals(ex.getSQLState())) throw new IllegalStateException("Ya existe una cita para ese doctor en esa fecha y hora.", ex);
+        throw ex;
+      } finally { try { cn.setAutoCommit(true); } catch (Exception ignore) {} }
+    } catch (SQLException e) {
+      throw new RuntimeException("Error creando cita: " + e.getMessage(), e);
+    }
+  }
+
+  /* ====== Estado ====== */
   public void actualizarEstado(int citaId, String nuevoEstado) {
-    final String sql = "UPDATE Cita SET estado=? WHERE id=?";
-    try (Connection con = Db.get();
-         PreparedStatement ps = con.prepareStatement(sql)) {
+    String sql = "UPDATE Cita SET estado=? WHERE id=?";
+    try (Connection cn = Db.get(); PreparedStatement ps = cn.prepareStatement(sql)) {
       ps.setString(1, nuevoEstado);
       ps.setInt(2, citaId);
-      ps.executeUpdate();
+      int n = ps.executeUpdate();
+      if (n == 0) throw new IllegalArgumentException("Cita no encontrada (id=" + citaId + ")");
     } catch (SQLException e) {
-      throw new RuntimeException("Error actualizando estado de cita id=" + citaId, e);
+      throw new RuntimeException("Error actualizando estado: " + e.getMessage(), e);
+    }
+  }
+
+  /* ====== Paciente (utilidades extra por si las necesitas) ====== */
+
+  /** Lista citas del paciente entre fechas (ambos inclusive). Si from/to son null, no filtra ese extremo. */
+  public List<CitaPacItem> citasDePaciente(int pacienteId, LocalDate from, LocalDate to) {
+    StringBuilder sb = new StringBuilder("""
+      SELECT c.id, DATE_FORMAT(c.fecha, '%Y-%m-%d') AS f,
+             DATE_FORMAT(c.hora, '%H:%i') AS h,
+             COALESCE(
+               NULLIF(TRIM(CONCAT_WS(' ', d.nombre1, d.nombre2, d.apellido1, d.apellido2)), ''),
+               d.identificacion
+             ) AS doctor,
+             c.estado, c.observacion
+      FROM Cita c
+      JOIN Doctor d ON d.id = c.doctor_id
+      WHERE c.paciente_id = ?
+      """);
+    if (from != null) sb.append(" AND c.fecha >= ? ");
+    if (to != null)   sb.append(" AND c.fecha <= ? ");
+    sb.append(" ORDER BY c.fecha, c.hora ");
+
+    List<CitaPacItem> out = new ArrayList<>();
+    try (Connection cn = Db.get(); PreparedStatement ps = cn.prepareStatement(sb.toString())) {
+      int i = 1;
+      ps.setInt(i++, pacienteId);
+      if (from != null) ps.setDate(i++, Date.valueOf(from));
+      if (to != null)   ps.setDate(i++, Date.valueOf(to));
+      try (ResultSet rs = ps.executeQuery()) {
+        while (rs.next()) {
+          out.add(new CitaPacItem(
+              rs.getInt("id"),
+              rs.getString("f"),
+              rs.getString("h"),
+              rs.getString("doctor"),
+              rs.getString("estado"),
+              rs.getString("observacion")
+          ));
+        }
+      }
+      return out;
+    } catch (SQLException e) {
+      throw new RuntimeException("Error listando citas del paciente: " + e.getMessage(), e);
+    }
+  }
+
+  /** Crear cita para paciente por código de doctor; estado por defecto 'Pendiente'. */
+  public int crearPorPaciente(int pacienteId, String codDoctor, LocalDate fecha, LocalTime hora, String observacion) {
+    String findDoc = "SELECT id FROM Doctor WHERE identificacion = ?";
+    try (Connection cn = Db.get()) {
+      int doctorId;
+      try (PreparedStatement ps = cn.prepareStatement(findDoc)) {
+        ps.setString(1, codDoctor);
+        try (ResultSet rs = ps.executeQuery()) {
+          if (!rs.next()) throw new IllegalArgumentException("Doctor no encontrado por código");
+          doctorId = rs.getInt(1);
+        }
+      }
+      return crear(pacienteId, doctorId, fecha, hora, "Pendiente", observacion);
+    } catch (SQLException e) {
+      throw new RuntimeException("Error creando cita para paciente: " + e.getMessage(), e);
+    }
+  }
+
+  /** Cancelar cita solo si pertenece al paciente y está en estado cancelable. */
+  public void cancelarPorPaciente(int citaId, int pacienteId) {
+    String sql = "UPDATE Cita SET estado='Cancelada' " +
+                 "WHERE id=? AND paciente_id=? AND estado IN ('Pendiente','Confirmada')";
+    try (Connection cn = Db.get(); PreparedStatement ps = cn.prepareStatement(sql)) {
+      ps.setInt(1, citaId);
+      ps.setInt(2, pacienteId);
+      int n = ps.executeUpdate();
+      if (n == 0) throw new IllegalArgumentException("No se pudo cancelar (no es tu cita o ya no es cancelable).");
+    } catch (SQLException e) {
+      throw new RuntimeException("Error cancelando cita: " + e.getMessage(), e);
     }
   }
 }
