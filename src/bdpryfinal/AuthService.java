@@ -1,40 +1,29 @@
 package bdpryfinal;
 
-/** Servicio de autenticación (acoplado a la versión de avance). */
+import java.sql.*;
+
 public class AuthService {
+
+  public record LoginResult(UsuarioDaoJdbc.User user, int sesionId, Integer pacienteId, Integer doctorId) {}
+
   private final UsuarioDaoJdbc usuarioDao = new UsuarioDaoJdbc();
   private final SesionDaoJdbc  sesionDao  = new SesionDaoJdbc();
 
-  /** Resultado de login: usuario autenticado + id de sesión abierta. */
-  public record LoginResult(UsuarioDaoJdbc.User user, int sesionId) {}
+  public LoginResult login(String username, String password) {
+    if (username == null || username.isBlank()) throw new IllegalArgumentException("Usuario requerido");
+    if (password == null) password = "";
+    var u = usuarioDao.encontrarPorUser(username);
+    if (u == null) throw new IllegalArgumentException("Credenciales inválidas");
+    if (!usuarioDao.verificarPassword(username, password)) throw new IllegalArgumentException("Credenciales inválidas");
 
-  /**
-   * Login con validaciones similares a la versión final:
-   * - username requerido (no nulo/blank)
-   * - password null -> "" (para evitar NPE)
-   * - abre sesión y devuelve el par (usuario, sesionId)
-   */
-  public LoginResult login(String username, String passwordPlano) {
-    if (username == null || username.isBlank()) {
-      throw new IllegalArgumentException("Usuario requerido");
-    }
-    if (passwordPlano == null) passwordPlano = "";
+    int sesionId = sesionDao.abrirSesion(u.id);
 
-    var userOpt = usuarioDao.login(username, passwordPlano);
-    if (userOpt.isEmpty()) {
-      // Mensaje compacto y consistente con la final
-      throw new IllegalArgumentException("Credenciales invalidas");
-    }
+    Integer pid = usuarioDao.pacienteIdPorUsuarioId(u.id);
+    Integer did = usuarioDao.doctorIdPorUsuarioId(u.id);
 
-    int sid = sesionDao.abrirSesion(userOpt.get().id);
-    return new LoginResult(userOpt.get(), sid);
+    return new LoginResult(u, sesionId, pid, did);
   }
 
-  /**
-   * Cerrar sesión tolerante:
-   * - acepta null y lo ignora
-   * - no propaga errores menores del UPDATE
-   */
   public void logout(Integer sesionId) {
     if (sesionId == null) return;
     try { sesionDao.cerrarSesion(sesionId); } catch (Exception ignore) {}

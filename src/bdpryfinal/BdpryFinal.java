@@ -1,246 +1,203 @@
 package bdpryfinal;
 
+import java.time.LocalDate;
+import java.time.LocalTime;
+import java.util.List;
 import java.util.Scanner;
 
+/** Menú de consola (avance) usando CÉDULA. */
 public class BdpryFinal {
 
   public static void main(String[] args) {
-    var auth   = new AuthService();
-    var citaSrv= new CitaService();
-    var udao   = new UsuarioDaoJdbc();
-    var sc     = new Scanner(System.in);
+    var auth    = new AuthService();
+    var citas   = new CitaService();
+    var udao    = new UsuarioDaoJdbc();
+    var sc      = new Scanner(System.in);
 
     UsuarioDaoJdbc.User usuarioActual = null;
     Integer sesionId = null;
+    Integer pacienteId = null;
+    Integer doctorId   = null;
 
     while (true) {
       System.out.println("\n================ MENU ================");
       if (usuarioActual == null) {
         System.out.println("1) Crear cuenta");
-        System.out.println("2) Iniciar sesion");
+        System.out.println("2) Iniciar sesión");
         System.out.println("0) Salir");
-        System.out.print("Opcion: ");
+        System.out.print("Opción: ");
         String op = sc.nextLine().trim();
-
         switch (op) {
-
-          case "1" -> {
-            System.out.print("Username: ");   String u = sc.nextLine().trim();
-            System.out.print("Nombre (display, se ignora en BD): "); String n = sc.nextLine().trim();
-            System.out.print("Password: ");   String p = sc.nextLine();
-            System.out.print("Rol (Doctor|Paciente): "); String r = sc.nextLine().trim();
-
-            if (!r.equals("Doctor") && !r.equals("Paciente")) {
-              System.out.println("Rol invalido."); break;
-            }
-
-            try {
-              // Overload que ignora 'nombre' (la tabla Usuario no lo guarda)
-              int nuevoUsuarioId = udao.crearUsuario(u, n, p, r);
-              System.out.println("Usuario creado id=" + nuevoUsuarioId);
-
-              if (r.equals("Doctor")) {
-                // Datos minimos para el perfil del doctor
-                System.out.print("Especialidad (ej. Cardiologia): "); String esp = sc.nextLine().trim();
-                System.out.print("Sede (ej. Central/Sur): ");         String sede= sc.nextLine().trim();
-                System.out.print("Horario (ej. Lun-Vie 8:00-12:00): ");String hor = sc.nextLine().trim();
-
-                new DoctorDaoJdbc().completarPerfilPorUsuarioId(nuevoUsuarioId, esp, sede, hor);
-                System.out.println("Perfil de Doctor actualizado.");
-              } else {
-                // Datos minimos para el perfil del paciente
-                System.out.print("Fecha de nacimiento (yyyy-MM-dd): ");
-                java.time.LocalDate fnac = leerFecha(sc, "");
-                System.out.print("Genero (F/M/Otro): ");  String gen = sc.nextLine().trim();
-                System.out.print("Telefono: ");           String tel = sc.nextLine().trim();
-                System.out.print("Direccion: ");          String dir = sc.nextLine().trim();
-
-                new PacienteDaoJdbc().completarPerfilPorUsuarioId(nuevoUsuarioId, fnac, gen, tel, dir);
-                System.out.println("Perfil de Paciente actualizado.");
-              }
-            } catch (IllegalStateException e) {
-              System.out.println("Error: " + e.getMessage());
-            } catch (Exception e) {
-              System.out.println("Error creando cuenta: " + e.getMessage());
-            }
-          }
-
+          case "1" -> crearCuenta(sc, udao);
           case "2" -> {
-            System.out.print("Username: "); String u = sc.nextLine().trim();
-            System.out.print("Password: "); String p = sc.nextLine();
             try {
-              var r = auth.login(u, p);
-              usuarioActual = r.user();
-              sesionId = r.sesionId();
-              System.out.println("Login OK: " + usuarioActual);
-            } catch (IllegalArgumentException e) {
-              System.out.println("Error: " + e.getMessage());
+              System.out.print("Usuario: ");   String u = sc.nextLine().trim();
+              System.out.print("Password: ");  String p = sc.nextLine();
+              var res = auth.login(u, p);
+              usuarioActual = res.user();
+              sesionId = res.sesionId();
+              pacienteId = res.pacienteId();
+              doctorId   = res.doctorId();
+              System.out.println("Bienvenido " + usuarioActual.username + " (" + usuarioActual.rol + ")");
             } catch (Exception e) {
-              System.out.println("Error en login: " + e.getMessage());
+              System.out.println("Error: " + e.getMessage());
             }
           }
-
-          case "0" -> { System.out.println("Adios!"); return; }
-
-          default -> System.out.println("Opcion invalida.");
+          case "0" -> { auth.logout(sesionId); System.out.println("Chao!"); return; }
+          default -> System.out.println("Opción inválida");
         }
+        continue;
+      }
 
-      } else {
-        System.out.println("Usuario: " + usuarioActual.username + " (" + usuarioActual.rol + ")");
-        System.out.println("1) Ver agenda por doctor y fecha");
-        System.out.println("2) Crear cita (por codigos PAC/DOC)");
-        System.out.println("3) Cambiar estado de una cita");
-        System.out.println("4) Ver ultimas sesiones mias");
-        System.out.println("9) Cerrar sesion");
-        System.out.println("0) Salir");
-        System.out.print("Opcion: ");
+      System.out.println("Usuario: " + usuarioActual.username + "  Rol: " + usuarioActual.rol);
+      if ("Paciente".equals(usuarioActual.rol)) {
+        System.out.println("1) Ver mis citas (rango)");
+        System.out.println("2) Crear cita (por cédula de doctor)");
+        System.out.println("3) Cancelar cita");
+        System.out.println("4) Cerrar sesión");
+        System.out.print("Opción: ");
         String op = sc.nextLine().trim();
-
         switch (op) {
-          case "1" -> { // Ver agenda por doctor/fecha
-            String doc = elegirDoctorCodigo(sc);
-            if (doc == null) break;
-            var fecha = leerFechaYMD(sc);
+          case "1" -> {
+            LocalDate desde = leerFechaOpt(sc, "Desde (yyyy-MM-dd, vacío = sin límite): ");
+            LocalDate hasta = leerFechaOpt(sc, "Hasta (yyyy-MM-dd, vacío = sin límite): ");
             try {
-              var items = citaSrv.agendaDeDoctor(doc, fecha);
-              if (items.isEmpty()) System.out.println("(sin citas)");
-              else items.forEach(System.out::println);
-            } catch (Exception e) {
-              System.out.println("Error: " + e.getMessage());
-            }
+              List<CitaDaoJdbc.CitaPacItem> lista = citas.citasPaciente(pacienteId, desde, hasta);
+              if (lista.isEmpty()) System.out.println("(sin citas)");
+              else lista.forEach(c -> System.out.printf("#%d  %s %s  %s  %s  %s%n",
+                  c.id, c.fecha, c.hora, c.doctor, c.estado, c.observacion == null ? "" : c.observacion));
+            } catch (Exception e) { System.out.println("Error: " + e.getMessage()); }
           }
-
-          case "2" -> { // Crear cita por codigos
-            System.out.print("Codigo paciente (ej. PAC-001): ");
-            String pac = sc.nextLine().trim();
-
-            String doc = elegirDoctorCodigo(sc);
-            if (doc == null) break;
-
-            var fecha = leerFechaYMD(sc);
-            var hora  = leerHora(sc, "Hora (HH:mm): ");
-            String estado = elegirEstado(sc);
-            System.out.print("Observacion: ");
-            String obs = sc.nextLine();
-
+          case "2" -> {
             try {
-              int id = citaSrv.crearPorCodigos(pac, doc, fecha, hora, estado, obs);
+              System.out.print("Cédula doctor: "); String cedDoc = sc.nextLine().trim();
+              LocalDate fecha = leerFecha(sc, "Fecha (yyyy-MM-dd): ");
+              LocalTime hora  = leerHora(sc,  "Hora (HH:mm): ");
+              System.out.print("Observación (opcional): "); String obs = sc.nextLine();
+              int id = citas.crearPorPaciente(pacienteId, cedDoc, fecha, hora, obs);
+              System.out.println("Cita creada id=" + id + " (Pendiente)");
+            } catch (Exception e) { System.out.println("Error: " + e.getMessage()); }
+          }
+          case "3" -> {
+            try {
+              int id = leerEntero(sc, "Id de la cita: ");
+              citas.cancelarPorPaciente(id, pacienteId);
+              System.out.println("Cita cancelada.");
+            } catch (Exception e) { System.out.println("Error: " + e.getMessage()); }
+          }
+          case "4" -> { auth.logout(sesionId); usuarioActual = null; sesionId = null; pacienteId = doctorId = null; }
+          default -> System.out.println("Opción inválida");
+        }
+      } else { // Doctor
+        System.out.println("1) Ver mi agenda por fecha");
+        System.out.println("2) Crear cita (por cédulas)");
+        System.out.println("3) Cambiar estado de una cita");
+        System.out.println("4) Cerrar sesión");
+        System.out.print("Opción: ");
+        String op = sc.nextLine().trim();
+        switch (op) {
+          case "1" -> {
+            try {
+              System.out.print("Tu cédula (doctor): "); String cedDoc = sc.nextLine().trim();
+              LocalDate fecha = leerFecha(sc, "Fecha (yyyy-MM-dd): ");
+              var agenda = citas.agendaDoctor(cedDoc, fecha);
+              if (agenda.isEmpty()) System.out.println("(sin turnos)");
+              else agenda.forEach(a ->
+                  System.out.printf("#%d  %s  %-20s  %-10s  %s%n", a.id, a.hora, a.paciente, a.estado, a.observacion == null ? "" : a.observacion));
+            } catch (Exception e) { System.out.println("Error: " + e.getMessage()); }
+          }
+          case "2" -> {
+            try {
+              System.out.print("Cédula paciente: "); String cedPac = sc.nextLine().trim();
+              System.out.print("Tu cédula (doctor): "); String cedDoc = sc.nextLine().trim();
+              LocalDate fecha = leerFecha(sc, "Fecha (yyyy-MM-dd): ");
+              LocalTime hora  = leerHora(sc,  "Hora (HH:mm): ");
+              System.out.print("Estado (Pendiente|Confirmada|Cancelada|Atendida): "); String est = sc.nextLine().trim();
+              System.out.print("Observación (opcional): "); String obs = sc.nextLine();
+              int id = citas.crearPorCodigos(cedPac, cedDoc, fecha, hora, est, obs);
               System.out.println("Cita creada id=" + id);
-            } catch (IllegalStateException | IllegalArgumentException e) {
-              System.out.println("Error: " + e.getMessage());
-            } catch (Exception e) {
-              System.out.println("Error creando cita: " + e.getMessage());
-            }
+            } catch (Exception e) { System.out.println("Error: " + e.getMessage()); }
           }
-
-          case "3" -> { // Cambiar estado
-            System.out.print("Id de la cita: ");
-            int id = Integer.parseInt(sc.nextLine().trim());
-            String estado = elegirEstado(sc);
+          case "3" -> {
             try {
-              citaSrv.actualizarEstado(id, estado);
-              System.out.println("Cita " + id + " -> " + estado);
-            } catch (Exception e) {
-              System.out.println("Error: " + e.getMessage());
-            }
+              int id = leerEntero(sc, "Id de la cita: ");
+              System.out.print("Nuevo estado (Pendiente|Confirmada|Cancelada|Atendida): ");
+              String est = sc.nextLine().trim();
+              citas.actualizarEstado(id, est);
+              System.out.println("Estado actualizado.");
+            } catch (Exception e) { System.out.println("Error: " + e.getMessage()); }
           }
-
-          case "4" -> { // Mis ultimas sesiones
-            try {
-              var sdao = new SesionDaoJdbc();
-              sdao.ultimasDelUsuario(usuarioActual.id, 10).forEach(System.out::println);
-            } catch (Exception e) {
-              System.out.println("Error: " + e.getMessage());
-            }
-          }
-
-          case "9" -> { // Cerrar sesion
-            auth.logout(sesionId);
-            System.out.println("Sesion cerrada");
-            usuarioActual = null; sesionId = null;
-          }
-
-          case "0" -> { System.out.println("Adios!"); return; }
-
-          default -> System.out.println("Opcion invalida.");
+          case "4" -> { auth.logout(sesionId); usuarioActual = null; sesionId = null; pacienteId = doctorId = null; }
+          default -> System.out.println("Opción inválida");
         }
       }
     }
   }
 
-  // ---------- helpers ----------
+  /* ===================== helpers ===================== */
 
-  private static java.time.LocalDate leerFecha(Scanner sc, String prompt) {
-    while (true) {
-      System.out.print(prompt);
-      String s = sc.nextLine().trim();
-      try { return java.time.LocalDate.parse(s); }
-      catch (Exception e) { System.out.println("Formato invalido, usa yyyy-MM-dd"); }
-    }
-  }
+  private static void crearCuenta(Scanner sc, UsuarioDaoJdbc udao) {
+    System.out.print("Usuario: "); String u = sc.nextLine().trim();
+    System.out.print("Password: "); String p = sc.nextLine();
+    System.out.print("Rol (Doctor|Paciente): "); String r = sc.nextLine().trim();
+    if (!"Doctor".equals(r) && !"Paciente".equals(r)) { System.out.println("Rol inválido."); return; }
 
-  private static java.time.LocalTime leerHora(Scanner sc, String prompt) {
-    while (true) {
-      System.out.print(prompt);
-      String s = sc.nextLine().trim() + ":00";
-      try { return java.time.LocalTime.parse(s); }
-      catch (Exception e) { System.out.println("Formato invalido, usa HH:mm"); }
-    }
-  }
-
-  private static String elegirEstado(Scanner sc) {
-    System.out.println("Estado: 1) Pendiente  2) Confirmada  3) Cancelada  4) Atendida");
-    while (true) {
-      System.out.print("Elige (1-4): ");
-      String s = sc.nextLine().trim();
-      switch (s) {
-        case "1": return "Pendiente";
-        case "2": return "Confirmada";
-        case "3": return "Cancelada";
-        case "4": return "Atendida";
-        default:  System.out.println("Opcion invalida.");
+    try {
+      int id = udao.crearUsuario(u, /*nombre*/ u, p, r);
+      System.out.println("Usuario creado id=" + id + " (se generará CED-" + id + " por trigger)");
+      if ("Doctor".equals(r)) {
+        var ddao = new DoctorDaoJdbc();
+        System.out.print("Especialidad (opcional): "); String esp = sc.nextLine();
+        System.out.print("Sede (opcional): ");         String sede= sc.nextLine();
+        System.out.print("Horario (opcional): ");      String hor = sc.nextLine();
+        System.out.print("Género (opcional): ");       String gen = sc.nextLine();
+        ddao.completarPerfilPorUsuarioId(id, esp, sede, hor, gen);
+        System.out.println("Perfil de Doctor actualizado.");
+      } else {
+        var pdao = new PacienteDaoJdbc();
+        System.out.print("Dirección (opcional): ");    String dir = sc.nextLine();
+        LocalDate fn = leerFechaOpt(sc, "Fecha nacimiento (yyyy-MM-dd, vacío = omitir): ");
+        System.out.print("Género (opcional): ");       String gen = sc.nextLine();
+        pdao.completarPerfilPorUsuarioId(id, dir, fn, gen);
+        System.out.println("Perfil de Paciente actualizado.");
       }
+    } catch (Exception e) {
+      System.out.println("Error creando cuenta: " + e.getMessage());
     }
   }
 
-  private static String elegirDoctorCodigo(Scanner sc) {
-    var ddao = new DoctorDaoJdbc();
-    var lista = ddao.listarTodos();
-    if (lista.isEmpty()) {
-      System.out.println("No hay doctores registrados.");
-      return null;
-    }
-    System.out.println("Elige un doctor:");
-    for (int i = 0; i < lista.size(); i++) {
-      var d = lista.get(i);
-      System.out.printf("%d) %s - %s%s%n", i, d.identificacion, d.nombre,
-          (d.especialidad == null || d.especialidad.isBlank()) ? "" : " (" + d.especialidad + ")");
-    }
-    int idx = leerEnteroEnRango(sc, "Opcion [0-" + (lista.size()-1) + "]: ", 0, lista.size()-1);
-    return lista.get(idx).identificacion;
-  }
-
-  private static java.time.LocalDate leerFechaYMD(Scanner sc) {
-    int anio  = leerEnteroEnRango(sc, "Anio (yyyy): ", 1900, 2100);
-    int mes   = leerEnteroEnRango(sc, "Mes (1-12): ", 1, 12);
-    while (true) {
-      int dia = leerEnteroEnRango(sc, "Dia (1-31): ", 1, 31);
-      try { return java.time.LocalDate.of(anio, mes, dia); }
-      catch (Exception e) { System.out.println("Fecha invalida, intenta de nuevo."); }
-    }
-  }
-
-  private static int leerEnteroEnRango(Scanner sc, String prompt, int min, int max) {
+  private static int leerEntero(Scanner sc, String prompt) {
     while (true) {
       System.out.print(prompt);
       String s = sc.nextLine().trim();
-      try {
-        int v = Integer.parseInt(s);
-        if (v < min || v > max) { System.out.println("Fuera de rango."); continue; }
-        return v;
-      } catch (NumberFormatException e) {
-        System.out.println("Numero invalido.");
-      }
+      try { return Integer.parseInt(s); }
+      catch (NumberFormatException e) { System.out.println("Número inválido."); }
     }
+  }
+
+  private static LocalDate leerFecha(Scanner sc, String prompt) {
+    while (true) {
+      System.out.print(prompt);
+      String s = sc.nextLine().trim();
+      try { return LocalDate.parse(s); }
+      catch (Exception e) { System.out.println("Fecha inválida."); }
+    }
+  }
+
+  private static LocalTime leerHora(Scanner sc, String prompt) {
+    while (true) {
+      System.out.print(prompt);
+      String s = sc.nextLine().trim();
+      try { return LocalTime.parse(s); }
+      catch (Exception e) { System.out.println("Hora inválida."); }
+    }
+  }
+
+  private static LocalDate leerFechaOpt(Scanner sc, String prompt) {
+    System.out.print(prompt);
+    String s = sc.nextLine().trim();
+    if (s.isEmpty()) return null;
+    try { return LocalDate.parse(s); }
+    catch (Exception e) { System.out.println("Fecha inválida, ignorando."); return null; }
   }
 }
