@@ -4,77 +4,85 @@ import java.sql.*;
 import java.util.ArrayList;
 import java.util.List;
 
-/** DAO para notas de paciente (bloc de notas simple). */
 public class NotaDaoJdbc {
 
-  public static final class NotaItem {
-    public final int id;            // id de la entrada (paciente_nota.id)
+  //Clase anidada con nota
+  public static final class NotaTxt {
+    public final int id;
+    public final int notaId;
     public final String texto;
     public final Timestamp creadaEn;
-
-    public NotaItem(int id, String texto, Timestamp creadaEn) {
-      this.id = id; this.texto = texto; this.creadaEn = creadaEn;
+    public NotaTxt(int id, int notaId, String texto, Timestamp creadaEn) {
+      this.id = id; this.notaId = notaId; this.texto = texto; this.creadaEn = creadaEn;
     }
   }
 
-  /** Asegura que exista la fila en 'nota' para el paciente y devuelve su id. */
-  private int asegurarNotaId(int pacienteId, Connection cn) throws SQLException {
-    try (PreparedStatement ps = cn.prepareStatement("SELECT id FROM nota WHERE paciente_id = ?")) {
-      ps.setInt(1, pacienteId);
-      try (ResultSet rs = ps.executeQuery()) {
-        if (rs.next()) return rs.getInt(1);
-      }
-    }
-    try (PreparedStatement ins = cn.prepareStatement("INSERT INTO nota(paciente_id) VALUES (?)", Statement.RETURN_GENERATED_KEYS)) {
-      ins.setInt(1, pacienteId);
-      ins.executeUpdate();
-      try (ResultSet gk = ins.getGeneratedKeys()) {
-        if (gk.next()) return gk.getInt(1);
-      }
-    }
-    throw new IllegalStateException("No se pudo asegurar nota_id del paciente " + pacienteId);
-  }
+  // Creamos una nota en caso de que no exista, sino la busca
+  public int CrearNotaId(int pacienteId) {
+    final String sel = "SELECT id FROM Nota WHERE paciente_id=?"; //Selecionamos el id de nota donde el paciente tenga el id que le pasamos
+    final String ins = "INSERT INTO Nota(paciente_id) VALUES(?)"; // Inserta la fila en Nota para este paciente (una por paciente)
+    //solo se ejecuta si el SELECT previo no encontró registro
 
-  /** Agrega un texto como una entrada (paciente_nota). */
-  public int agregarTexto(int pacienteId, String texto) {
-    if (texto == null || texto.isBlank()) throw new IllegalArgumentException("Texto requerido");
     try (Connection cn = Db.get()) {
-      int notaId = asegurarNotaId(pacienteId, cn);
-      try (PreparedStatement ps = cn.prepareStatement(
-          "INSERT INTO paciente_nota(nota_id, texto) VALUES (?,?)", Statement.RETURN_GENERATED_KEYS)) {
-        ps.setInt(1, notaId);
-        ps.setString(2, texto);
+      try (PreparedStatement ps = cn.prepareStatement(sel)) {
+        ps.setInt(1, pacienteId);
+        try (ResultSet rs = ps.executeQuery()) {
+          if (rs.next()) return rs.getInt(1);
+        }
+      }
+      try (PreparedStatement ps = cn.prepareStatement(ins, Statement.RETURN_GENERATED_KEYS)) { //Insertamos una nueva fila y 
+        ps.setInt(1, pacienteId);
         ps.executeUpdate();
         try (ResultSet gk = ps.getGeneratedKeys()) {
           if (gk.next()) return gk.getInt(1);
         }
       }
-      throw new IllegalStateException("No se obtuvo id de la nota del paciente.");
+      throw new IllegalStateException("No se obtuvo id de Nota");
     } catch (SQLException e) {
-      throw new RuntimeException("Error agregando nota: " + e.getMessage(), e);
+      throw new RuntimeException("Error obteniendo/creando Nota", e);
     }
   }
 
-  /** Lista entradas de notas de un paciente (orden cronológico). */
-  public List<NotaItem> listarNotas(int pacienteId) {
-    final String sql = """
-      SELECT pn.id, pn.texto, pn.creada_en
-      FROM paciente_nota pn
-      JOIN nota n ON n.id = pn.nota_id
-      WHERE n.paciente_id = ?
-      ORDER BY pn.creada_en
-      """;
-    List<NotaItem> out = new ArrayList<>();
-    try (Connection cn = Db.get(); PreparedStatement ps = cn.prepareStatement(sql)) {
-      ps.setInt(1, pacienteId);
+  //Listamos las notas de forma descendente
+  public List<NotaTxt> listarNotas(int notaId) {
+    final String sql =
+        "SELECT id, nota_id, texto, creada_en " +
+        "FROM Paciente_Nota WHERE nota_id=? " +
+        "ORDER BY creada_en DESC, id DESC";
+    List<NotaTxt> Notastxt = new ArrayList<>();
+    try (Connection cn = Db.get();
+         PreparedStatement ps = cn.prepareStatement(sql)) {
+      ps.setInt(1, notaId);
       try (ResultSet rs = ps.executeQuery()) {
         while (rs.next()) {
-          out.add(new NotaItem(rs.getInt("id"), rs.getString("texto"), rs.getTimestamp("creada_en")));
+          Notastxt.add(new NotaTxt(
+              rs.getInt("id"),
+              rs.getInt("nota_id"),
+              rs.getString("texto"),
+              rs.getTimestamp("creada_en")
+          ));
         }
       }
-      return out;
+      return Notastxt;
     } catch (SQLException e) {
-      throw new RuntimeException("Error listando notas: " + e.getMessage(), e);
+      throw new RuntimeException("Error listando notas", e);
+    }
+  }
+
+  //Agregamos una nueva nota
+  public int agregarNota(int notaId, String texto) {
+    if (texto == null || texto.isBlank()) //Si el texto esta en blanco o es vacio entonces genera un error
+      throw new IllegalArgumentException("El campo 'texto' es obligatorio");
+    final String sql = "INSERT INTO Paciente_Nota(nota_id, texto) VALUES (?,?)"; //Ahora insertamos una nueva nota con un nuevo id y texto
+    try (Connection cn = Db.get();
+         PreparedStatement ps = cn.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) { //Pasamos el codigo junto con un nuevo key autogenerado creado por la bd
+      ps.setInt(1, notaId);
+      ps.setString(2, texto.trim());
+      ps.executeUpdate();
+      try (ResultSet gk = ps.getGeneratedKeys()) { if (gk.next()) return gk.getInt(1); }
+      throw new IllegalStateException("No se obtuvo id de nota");
+    } catch (SQLException e) {
+      throw new RuntimeException("Error agregando nota", e);
     }
   }
 }

@@ -4,64 +4,62 @@ import java.time.LocalDate;
 import java.time.LocalTime;
 import java.util.List;
 
+//Servicio de citas
 public class CitaService {
 
+  //Creamos un objeto citaDao
   private final CitaDaoJdbc citaDao = new CitaDaoJdbc();
 
-  public List<CitaDaoJdbc.AgendaItem> agendaDoctor(String cedulaDoctor, LocalDate fecha) {
-    if (cedulaDoctor == null || cedulaDoctor.isBlank()) {
-      throw new IllegalArgumentException("Cédula de doctor requerida");
-    }
-    if (fecha == null) {
-      throw new IllegalArgumentException("Fecha requerida");
-    }
-    return citaDao.agendaDeDoctor(cedulaDoctor, fecha);
-  }
-
-  public int crear(int pacienteId, int doctorId, LocalDate fecha, LocalTime hora, String estado, String observacion) {
-    validarCampos(fecha, hora, estado);
-    return citaDao.crear(pacienteId, doctorId, fecha, hora, estado, observacion);
-  }
-
-  public int crearPorCodigos(String cedulaPaciente, String cedulaDoctor,
-                             LocalDate fecha, LocalTime hora, String estado, String observacion) {
-    if (cedulaPaciente == null || cedulaPaciente.isBlank())
-      throw new IllegalArgumentException("Cédula de paciente requerida");
-    if (cedulaDoctor == null || cedulaDoctor.isBlank())
-      throw new IllegalArgumentException("Cédula de doctor requerida");
-    validarCampos(fecha, hora, estado);
-    return citaDao.crearPorCodigos(cedulaPaciente, cedulaDoctor, fecha, hora, estado, observacion);
-  }
-
-  public int crearPorPaciente(int pacienteId, String cedulaDoctor,
-                              LocalDate fecha, LocalTime hora, String observacion) {
-    if (pacienteId <= 0) throw new IllegalArgumentException("Paciente inválido");
-    if (cedulaDoctor == null || cedulaDoctor.isBlank())
-      throw new IllegalArgumentException("Cédula de doctor requerida");
+  //Creamos la lista con las citas de doctor
+  public List<CitaDaoJdbc.AgendaItem> agendaDeDoctor(String codDoctor, LocalDate fecha) { 
+    if (codDoctor == null || codDoctor.isBlank()) throw new IllegalArgumentException("Código de doctor requerido");
     if (fecha == null) throw new IllegalArgumentException("Fecha requerida");
-    if (hora == null) throw new IllegalArgumentException("Hora requerida");
-    return citaDao.crearPorPaciente(pacienteId, cedulaDoctor, fecha, hora, observacion);
+    return citaDao.agendaDeDoctor(codDoctor, fecha); //Retornamos la lista que nos da el metodo agenda doctor
   }
-
+  
+  //Creamos una nueva cita y retornamos el id de la misma
+  public int crear(int pacienteId, int doctorId, LocalDate fecha, LocalTime hora, String estado, String obs) {
+    validarCampos(fecha, hora, estado);
+    return citaDao.crear(pacienteId, doctorId, fecha, hora, estado, obs);
+  }
+  
+  //Creamos una cita con las cédulas de paciente y doctor
+  public int crearPorCodigos(String codPaciente, String codDoctor, LocalDate fecha, LocalTime hora, String estado, String obs) {
+    if (codPaciente == null || codPaciente.isBlank()) throw new IllegalArgumentException("Código de paciente requerido");
+    if (codDoctor == null || codDoctor.isBlank()) throw new IllegalArgumentException("Código de doctor requerido");
+    validarCampos(fecha, hora, estado); //Funcion mas abajo para validar que no sean nulos
+    return citaDao.crearPorCodigos(codPaciente, codDoctor, fecha, hora, estado, obs);
+  }
+  
+  //Actualizamos el estado de la cita
   public void actualizarEstado(int citaId, String nuevoEstado) {
-    if (citaId <= 0) throw new IllegalArgumentException("Cita inválida");
+    if (citaId <= 0) throw new IllegalArgumentException("Id inválido");
     if (nuevoEstado == null || nuevoEstado.isBlank()) throw new IllegalArgumentException("Estado requerido");
     citaDao.actualizarEstado(citaId, nuevoEstado);
   }
 
-  public List<CitaDaoJdbc.CitaPacItem> citasPaciente(int pacienteId, LocalDate desde, LocalDate hasta) {
-    if (pacienteId <= 0) throw new IllegalArgumentException("Paciente inválido");
-    if (desde != null && hasta != null && hasta.isBefore(desde))
-      throw new IllegalArgumentException("Rango de fechas inválido");
-    return citaDao.citasDePaciente(pacienteId, desde, hasta);
+  // Lista las citas del paciente
+  public List<CitaDaoJdbc.CitaPacItem> citasDePaciente(int pacienteId, LocalDate from, LocalDate to) {
+    if (pacienteId <= 0) throw new IllegalArgumentException("pacienteId inválido");
+    return citaDao.citasDePaciente(pacienteId, from, to);
   }
-
+  
+  //Crea las citas desde la cuenta de un paciente
+  public int crearPorPaciente(int pacienteId, String codDoctor, LocalDate fecha, LocalTime hora, String obs) {
+    if (pacienteId <= 0) throw new IllegalArgumentException("pacienteId inválido");
+    if (codDoctor == null || codDoctor.isBlank()) throw new IllegalArgumentException("Código de doctor requerido");
+    if (fecha == null) throw new IllegalArgumentException("Fecha requerida");
+    if (hora == null) throw new IllegalArgumentException("Hora requerida");
+    return citaDao.crearPorPaciente(pacienteId, codDoctor, fecha, hora, obs);
+  }
+  
+  //Cancela las citas desde la cuenta de un paciente
   public void cancelarPorPaciente(int citaId, int pacienteId) {
-    if (citaId <= 0) throw new IllegalArgumentException("Cita inválida");
-    if (pacienteId <= 0) throw new IllegalArgumentException("Paciente inválido");
+    if (citaId <= 0 || pacienteId <= 0) throw new IllegalArgumentException("Parámetros inválidos");
     citaDao.cancelarPorPaciente(citaId, pacienteId);
   }
 
+  //Validamos que los campos fecha, hora, estado no sean nulos
   private void validarCampos(LocalDate fecha, LocalTime hora, String estado) {
     if (fecha == null) throw new IllegalArgumentException("Fecha requerida");
     if (hora == null) throw new IllegalArgumentException("Hora requerida");

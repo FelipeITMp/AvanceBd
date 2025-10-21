@@ -4,44 +4,28 @@ import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.SQLException;
 
-/**
- * Utilidad de conexiones JDBC a MySQL.
- * - Carga explícita del driver (avance).
- * - Permite configurar URL/USER/PASS vía System properties (final),
- *   con valores por defecto amigables para XAMPP.
- * - Devuelve una conexión NUEVA en cada get() (compat con try-with-resources de los DAOs).
- */
-public final class Db {
+public class Db {
+  //Conexion estatica que va a usar toda la app desde el metodo get()
+  private static Connection shared;
 
-  // Fallbacks (puedes sobreescribir con -DDB_URL=..., -DDB_USER=..., -DDB_PASS=...)
-  private static final String DEFAULT_URL  =
-      "jdbc:mysql://127.0.0.1:3306/clinica?useSSL=false&serverTimezone=UTC&useUnicode=true&characterEncoding=utf8";
-  private static final String DEFAULT_USER = "root";
-  private static final String DEFAULT_PASS = "";
-
-  static {
-    try {
-      // Driver del conector MySQL (mysql-connector-j)
-      Class.forName("com.mysql.cj.jdbc.Driver");
-    } catch (ClassNotFoundException e) {
-      throw new RuntimeException("No se encontró el driver MySQL en el classpath", e);
-    }
-  }
-
-  private Db() {}
-
-  /** Obtiene una conexión nueva. Recuerda cerrar con try-with-resources. */
+  //Creamos la conexion
   public static Connection get() throws SQLException {
-    String url  = System.getProperty("DB_URL",  DEFAULT_URL);
-    String user = System.getProperty("DB_USER", DEFAULT_USER);
-    String pass = System.getProperty("DB_PASS", DEFAULT_PASS);
-    return DriverManager.getConnection(url, user, pass);
+    if (shared == null || shared.isClosed()) {
+      String url  = "jdbc:mysql://127.0.0.1:3306/clinica?useSSL=false&serverTimezone=UTC";
+      String user = "root";
+      String pass = "";
+      shared = DriverManager.getConnection(url, user, pass);
+    }
+    return shared;
   }
 
-  /** (Opcional) Método de conveniencia si alguna vez guardas una conexión y quieres cerrarla sin propagar. */
-  public static void closeQuiet(Connection c) {
-    if (c != null) {
-      try { c.close(); } catch (Exception ignore) {}
+  // Cuando queremos cerrar sesion invocamos el metodo vacio CloseQuiet con un try
+  public static void closeQuiet() {
+    if (shared != null) {
+      try { shared.close();
+      } 
+      catch (Exception ignored) {}
+      shared = null;
     }
   }
 }

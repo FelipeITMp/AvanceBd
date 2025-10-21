@@ -6,15 +6,13 @@ import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.List;
 
-/** DAO JDBC para tabla Cita (versión con cédula) */
+/** DAO JDBC para tabla Cita */
 public class CitaDaoJdbc {
-
-  /* ===== DTOs ligeros ===== */
 
   public static final class AgendaItem {
     public final int id;
-    public final String hora;       // "HH:mm"
-    public final String paciente;   // nombre mostrado o cédula
+    public final String hora;
+    public final String paciente;
     public final String estado;
     public final String observacion;
     public AgendaItem(int id, String hora, String paciente, String estado, String observacion) {
@@ -24,9 +22,9 @@ public class CitaDaoJdbc {
 
   public static final class CitaPacItem {
     public final int id;
-    public final String fecha;      // "yyyy-MM-dd"
-    public final String hora;       // "HH:mm"
-    public final String doctor;     // nombre mostrado o cédula
+    public final String fecha;
+    public final String hora;
+    public final String doctor;
     public final String estado;
     public final String observacion;
     public CitaPacItem(int id, String fecha, String hora, String doctor, String estado, String obs) {
@@ -34,13 +32,11 @@ public class CitaDaoJdbc {
     }
   }
 
-  /* ===== Consultas ===== */
-
-  /** Agenda del doctor por CÉDULA y fecha. */
+  // Agenda del doctor por CÉDULA
   public List<AgendaItem> agendaDeDoctor(String cedulaDoctor, LocalDate fecha) {
     String sql = """
       SELECT c.id,
-             TIME_FORMAT(c.hora, '%H:%i') AS hhmm,
+             DATE_FORMAT(c.hora, '%H:%i') AS hhmm,
              COALESCE(
                NULLIF(TRIM(CONCAT_WS(' ', p.nombre1, p.nombre2, p.apellido1, p.apellido2)), ''),
                p.cedula
@@ -70,111 +66,86 @@ public class CitaDaoJdbc {
       }
       return out;
     } catch (SQLException e) {
-      throw new RuntimeException("Error listando agenda: " + e.getMessage(), e);
+      throw new RuntimeException("Error listando agenda", e);
     }
   }
 
-  /** Crear cita por IDs internos. */
-  public int crear(int pacienteId, int doctorId, LocalDate fecha, LocalTime hora,
-                   String estado, String observacion) {
-    String sql = "INSERT INTO Cita(paciente_id, doctor_id, fecha, hora, estado, observacion) VALUES (?,?,?,?,?,?)";
+  // Crear cita por IDs internos (utilidad común)
+  public int crear(int pacienteId, int doctorId, LocalDate fecha, LocalTime hora, String estado, String obs) {
+    String sql = "INSERT INTO Cita (paciente_id, doctor_id, fecha, hora, estado, observacion) VALUES (?,?,?,?,?,?)";
     try (Connection cn = Db.get(); PreparedStatement ps = cn.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
       ps.setInt(1, pacienteId);
       ps.setInt(2, doctorId);
       ps.setDate(3, Date.valueOf(fecha));
       ps.setTime(4, Time.valueOf(hora));
       ps.setString(5, estado);
-      if (observacion == null || observacion.isBlank()) ps.setNull(6, Types.VARCHAR);
-      else ps.setString(6, observacion);
+      ps.setString(6, obs);
       ps.executeUpdate();
-      try (ResultSet gk = ps.getGeneratedKeys()) {
-        if (gk.next()) return gk.getInt(1);
+      try (ResultSet rs = ps.getGeneratedKeys()) {
+        if (rs.next()) return rs.getInt(1);
       }
-      throw new IllegalStateException("No se obtuvo ID generado para la cita");
+      throw new IllegalStateException("No se generó ID de Cita");
     } catch (SQLException e) {
-      if ("23000".equals(e.getSQLState()))
-        throw new IllegalStateException("Ya existe una cita para ese doctor en esa fecha y hora.", e);
-      throw new RuntimeException("Error creando cita: " + e.getMessage(), e);
+      throw new RuntimeException("Error creando cita", e);
     }
   }
 
-  /** Crear cita por CÉDULAS de paciente y doctor. */
-  public int crearPorCodigos(String cedulaPaciente, String cedulaDoctor, LocalDate fecha, LocalTime hora,
-                             String estado, String observacion) {
-    String find = """
-      SELECT p.id AS pid, d.id AS did
-      FROM Paciente p, Doctor d
-      WHERE p.cedula = ? AND d.cedula = ?
+  // Crear por CÉDULAS de paciente y doctor
+  public int crearPorCodigos(String cedulaPaciente, String cedulaDoctor, LocalDate fecha, LocalTime hora, String estado, String obs) {
+    String sql = """
+      INSERT INTO Cita (paciente_id, doctor_id, fecha, hora, estado, observacion)
+      SELECT p.id, d.id, ?, ?, ?, ?
+      FROM Paciente p
+      JOIN Doctor   d ON 1=1
+      WHERE p.cedula=? AND d.cedula=?
       """;
-    try (Connection cn = Db.get()) {
-      cn.setAutoCommit(false);
-      try (PreparedStatement ps = cn.prepareStatement(find)) {
-        ps.setString(1, cedulaPaciente);
-        ps.setString(2, cedulaDoctor);
-        try (ResultSet rs = ps.executeQuery()) {
-          if (!rs.next()) throw new IllegalArgumentException("Paciente o Doctor no encontrados por cédula.");
-          int pid = rs.getInt("pid");
-          int did = rs.getInt("did");
-          String ins = "INSERT INTO Cita(paciente_id, doctor_id, fecha, hora, estado, observacion) VALUES (?,?,?,?,?,?)";
-          try (PreparedStatement insPs = cn.prepareStatement(ins, Statement.RETURN_GENERATED_KEYS)) {
-            insPs.setInt(1, pid);
-            insPs.setInt(2, did);
-            insPs.setDate(3, Date.valueOf(fecha));
-            insPs.setTime(4, Time.valueOf(hora));
-            insPs.setString(5, estado);
-            if (observacion == null || observacion.isBlank()) insPs.setNull(6, Types.VARCHAR);
-            else insPs.setString(6, observacion);
-            insPs.executeUpdate();
-            try (ResultSet gk = insPs.getGeneratedKeys()) {
-              if (gk.next()) { cn.commit(); return gk.getInt(1); }
-            }
-            throw new IllegalStateException("No se obtuvo ID generado para la cita");
-          }
-        }
-      } catch (SQLException ex) {
-        cn.rollback();
-        if ("23000".equals(ex.getSQLState()))
-          throw new IllegalStateException("Ya existe una cita para ese doctor en esa fecha y hora.", ex);
-        throw ex;
-      } finally {
-        try { cn.setAutoCommit(true); } catch (Exception ignore) {}
+    try (Connection cn = Db.get(); PreparedStatement ps = cn.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
+      ps.setDate(1, Date.valueOf(fecha));
+      ps.setTime(2, Time.valueOf(hora));
+      ps.setString(3, estado);
+      ps.setString(4, obs);
+      ps.setString(5, cedulaPaciente);
+      ps.setString(6, cedulaDoctor);
+      int n = ps.executeUpdate();
+      if (n == 0) throw new IllegalArgumentException("Paciente o Doctor no encontrados por cédula");
+      try (ResultSet rs = ps.getGeneratedKeys()) {
+        if (rs.next()) return rs.getInt(1);
       }
+      throw new IllegalStateException("No se generó ID de Cita");
     } catch (SQLException e) {
-      throw new RuntimeException("Error creando cita: " + e.getMessage(), e);
+      throw new RuntimeException("Error creando cita por códigos", e);
     }
   }
 
-  /** Actualizar estado de la cita. */
+  // Cambia el estado de la cita
   public void actualizarEstado(int citaId, String nuevoEstado) {
     String sql = "UPDATE Cita SET estado=? WHERE id=?";
     try (Connection cn = Db.get(); PreparedStatement ps = cn.prepareStatement(sql)) {
       ps.setString(1, nuevoEstado);
       ps.setInt(2, citaId);
-      int n = ps.executeUpdate();
-      if (n == 0) throw new IllegalArgumentException("Cita no encontrada (id=" + citaId + ")");
+      ps.executeUpdate();
     } catch (SQLException e) {
-      throw new RuntimeException("Error actualizando estado: " + e.getMessage(), e);
+      throw new RuntimeException("Error actualizando estado", e);
     }
   }
 
-  /** Listado de citas de un paciente por rango de fechas (IDs internos). */
+  // Listar citas del paciente (opcionalmente entre fechas)
   public List<CitaPacItem> citasDePaciente(int pacienteId, LocalDate from, LocalDate to) {
-    StringBuilder sb = new StringBuilder("""
+    String base = """
       SELECT c.id,
              DATE_FORMAT(c.fecha, '%Y-%m-%d') AS f,
-             TIME_FORMAT(c.hora,  '%H:%i')    AS h,
-             COALESCE(
-               NULLIF(TRIM(CONCAT_WS(' ', d.nombre1, d.nombre2, d.apellido1, d.apellido2)), ''),
-               d.cedula
-             ) AS doctor,
-             c.estado, c.observacion
+             DATE_FORMAT(c.hora,  '%H:%i')     AS h,
+             COALESCE(NULLIF(TRIM(CONCAT_WS(' ', d.nombre1, d.nombre2, d.apellido1, d.apellido2)), ''), d.cedula) AS doctor,
+             c.estado,
+             c.observacion
       FROM Cita c
       JOIN Doctor d ON d.id = c.doctor_id
-      WHERE c.paciente_id = ?
-      """);
-    if (from != null) sb.append(" AND c.fecha >= ? ");
-    if (to   != null) sb.append(" AND c.fecha <= ? ");
-    sb.append(" ORDER BY c.fecha, c.hora ");
+      WHERE c.paciente_id=?
+      """;
+    StringBuilder sb = new StringBuilder(base);
+    if (from != null) sb.append(" AND c.fecha >= ?");
+    if (to   != null) sb.append(" AND c.fecha <= ?");
+    sb.append(" ORDER BY c.fecha, c.hora");
 
     List<CitaPacItem> out = new ArrayList<>();
     try (Connection cn = Db.get(); PreparedStatement ps = cn.prepareStatement(sb.toString())) {
@@ -200,7 +171,7 @@ public class CitaDaoJdbc {
     }
   }
 
-  /** Crear cita desde el paciente, eligiendo doctor por CÉDULA. */
+  // Crear cita desde la perspectiva del paciente: doctor por CÉDULA
   public int crearPorPaciente(int pacienteId, String cedulaDoctor, LocalDate fecha, LocalTime hora, String observacion) {
     String BDoc = "SELECT id FROM Doctor WHERE cedula = ?";
     try (Connection cn = Db.get()) {
@@ -218,10 +189,8 @@ public class CitaDaoJdbc {
     }
   }
 
-  /** Cancelación por paciente: solo si está Pendiente/Confirmada y pertenece al paciente. */
   public void cancelarPorPaciente(int citaId, int pacienteId) {
-    String sql = "UPDATE Cita SET estado='Cancelada' " +
-                 "WHERE id=? AND paciente_id=? AND estado IN ('Pendiente','Confirmada')";
+    String sql = "UPDATE Cita SET estado='Cancelada' WHERE id=? AND paciente_id=? AND estado IN ('Pendiente','Confirmada')";
     try (Connection cn = Db.get(); PreparedStatement ps = cn.prepareStatement(sql)) {
       ps.setInt(1, citaId);
       ps.setInt(2, pacienteId);

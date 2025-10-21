@@ -5,14 +5,16 @@ import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 
+//Clase paciente
 public class PacienteDaoJdbc {
 
-  /** Item ligero para UI/listados */
+  //Clase anidada
   public static final class PacienteItem {
     public final int id;
     public final String cedula;
     public final String nombre;
-
+    
+    //Metodo constructor de clase anidada
     public PacienteItem(int id, String cedula, String nombre) {
       this.id = id;
       this.cedula = cedula;
@@ -24,8 +26,7 @@ public class PacienteDaoJdbc {
     }
   }
 
-  /* ===================== Registro / Perfil ===================== */
-
+// Insercion de perfil
   public void insertarPerfilPaciente(int usuarioId,
                                      String cedula,
                                      String nombre1,
@@ -37,7 +38,7 @@ public class PacienteDaoJdbc {
                                      String genero,
                                      String direccion,
                                      LocalDate fechaNacimiento) {
-
+//Solicitud de insercion
     final String sql =
         "INSERT INTO Paciente (" +
         "  cedula, nombre1, nombre2, apellido1, apellido2, " +
@@ -54,7 +55,8 @@ public class PacienteDaoJdbc {
         "  genero=VALUES(genero), " +
         "  direccion=VALUES(direccion), " +
         "  fecha_nacimiento=VALUES(fecha_nacimiento)";
-
+    
+    //Conexion e insercion de datos a la bd
     try (Connection con = Db.get();
          PreparedStatement ps = con.prepareStatement(sql)) {
 
@@ -78,11 +80,14 @@ public class PacienteDaoJdbc {
     }
   }
 
+  //Completacion de datos que pueden llegar a ser nulos
   public void completarPerfilPorUsuarioId(int usuarioId,
                                           String direccion,
                                           LocalDate fechaNacimiento,
                                           String genero) {
+    //Solicitud de actualizacion en la tabla Paciente
     final String sql = "UPDATE Paciente SET direccion=?, fecha_nacimiento=?, genero=? WHERE usuario_id=?";
+    //Actualizacion de datos
     try (Connection con = Db.get();
          PreparedStatement ps = con.prepareStatement(sql)) {
 
@@ -99,9 +104,8 @@ public class PacienteDaoJdbc {
     }
   }
 
-  /* ===================== Consultas utilitarias ===================== */
 
-  /** Buscar por cédula (forma canónica del avance final). */
+  // Buscar por cédula
   public PacienteItem encontrarPorCedula(String cedula) {
     final String sql =
         "SELECT id, cedula, " +
@@ -123,15 +127,12 @@ public class PacienteDaoJdbc {
       throw new RuntimeException("Error consultando paciente por cédula", e);
     }
   }
-
-  /** Alias de compatibilidad con el final (misma semántica que 'encontrarPorCedula'). */
-  public PacienteItem EncontrarPorCodigo(String codigo) {
-    return encontrarPorCedula(codigo);
-  }
-
-  /** ID interno por cédula (útil para joins rápidos). */
+  
+  //Buscar el id del paciente por su cedula
   public int idPorCedula(String cedula) {
+    //Solicitud de busqueda por cedula
     final String sql = "SELECT id FROM Paciente WHERE cedula = ?";
+    //Busqueda y retorno de id del paciente por cedula
     try (Connection con = Db.get();
          PreparedStatement ps = con.prepareStatement(sql)) {
       ps.setString(1, cedula);
@@ -144,7 +145,7 @@ public class PacienteDaoJdbc {
     }
   }
 
-  /** Búsqueda por nombre (like) devolviendo cédula y nombre compuesto. */
+  //Lista de posibles coincidencias con un nombre de paciente
   public List<PacienteItem> buscarPorNombre(String filtro) {
     final String sql =
         "SELECT id, cedula, " +
@@ -173,7 +174,8 @@ public class PacienteDaoJdbc {
       throw new RuntimeException("Error buscando pacientes por nombre", e);
     }
   }
-
+  
+  //Metodo para verificar si un String esta en blanco
   private static String blankToNull(String s) {
     if (s == null) return null;
     String t = s.trim();

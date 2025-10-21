@@ -2,106 +2,143 @@ package bdpryfinal;
 
 import java.sql.*;
 
-/** DAO para tabla Usuario (login/registro) y utilidades relacionadas. */
 public class UsuarioDaoJdbc {
 
+  //Clase anidada user para mostrar datos de usuario
   public static final class User {
     public final int id;
     public final String username;
-    public final String nombre; // nombre completo (si existe), o username
+    public final String nombre;
     public final String rol;
-
+    
+    //Metodo constructor de user
     public User(int id, String username, String nombre, String rol) {
-      this.id = id; this.username = username; this.nombre = nombre; this.rol = rol;
+      this.id = id;
+      this.username = username;
+      this.nombre = nombre;
+      this.rol = rol;
     }
   }
 
-  /** Crea un usuario. La columna 'nombre' NO existe en usuario; se usa para nombrar doctor/paciente vía triggers. */
-  public int crearUsuario(String username, String nombre, String password, String rol) {
-    final String sql = "INSERT INTO Usuario(username, password, rol) VALUES (?,?,?)";
+// Metodo para crear un usuario en la base de datos
+public int crearUsuario(String username, String password, String rol) {
+    //Solicitud de creacion de un usuario en la bd
+    String sql = "INSERT INTO Usuario (username, password, rol) VALUES (?,?,?)";
+    //Creacion del usuario
+    try (Connection con = Db.get();
+         PreparedStatement ps = con.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
+        ps.setString(1, username);
+        ps.setString(2, password);
+        ps.setString(3, rol);
+        ps.executeUpdate();
+        try (ResultSet rs = ps.getGeneratedKeys()) {
+            if (rs.next()) return rs.getInt(1);
+        }
+        throw new IllegalStateException("No se generó id de usuario");
+    } catch (SQLException e) {
+        throw new RuntimeException("Error creando usuario: " + e.getMessage(), e);
+    }
+}
+
+//Metodo para verificar si existe un usuario
+  public boolean existeUsername(String username) {
+    //Buscamos una fila de la tabla usuario que contenga el username solicitado  
+    final String sql = "SELECT 1 FROM Usuario WHERE username = ?";
+    //hacemos la solicitud
     try (Connection cn = Db.get();
-         PreparedStatement ps = cn.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
-      ps.setString(1, username);
-      ps.setString(2, password);
-      ps.setString(3, rol);
-      ps.executeUpdate();
-      try (ResultSet gk = ps.getGeneratedKeys()) {
-        if (gk.next()) return gk.getInt(1);
-      }
-      throw new IllegalStateException("No se obtuvo id del usuario.");
-    } catch (SQLException e) {
-      throw new RuntimeException("Error creando usuario: " + e.getMessage(), e);
-    }
-  }
-
-  /** Devuelve un user por username con un 'nombre' derivado de doctor/paciente si existe. */
-  public User encontrarPorUser(String username) {
-    final String sql = """
-      SELECT u.id, u.username, u.rol,
-             COALESCE(
-               NULLIF(TRIM(CONCAT_WS(' ', d.nombre1,d.nombre2,d.apellido1,d.apellido2)),''),
-               NULLIF(TRIM(CONCAT_WS(' ', p.nombre1,p.nombre2,p.apellido1,p.apellido2)),''),
-               u.username
-             ) AS nombre
-      FROM Usuario u
-      LEFT JOIN Doctor d ON d.usuario_id = u.id
-      LEFT JOIN Paciente p ON p.usuario_id = u.id
-      WHERE u.username = ?
-      """;
-    try (Connection cn = Db.get(); PreparedStatement ps = cn.prepareStatement(sql)) {
+         PreparedStatement ps = cn.prepareStatement(sql)) {
       ps.setString(1, username);
       try (ResultSet rs = ps.executeQuery()) {
-        if (!rs.next()) return null;
-        return new User(
-            rs.getInt("id"),
-            rs.getString("username"),
-            rs.getString("nombre"),
-            rs.getString("rol")
-        );
+        return rs.next();
       }
     } catch (SQLException e) {
-      throw new RuntimeException("Error consultando usuario: " + e.getMessage(), e);
+      throw new RuntimeException("Error verificando username", e);
     }
   }
 
-  public boolean verificarPassword(String username, String password) {
+  //Metodo para encontrar un usuario por username
+  public User EncontrarPorUser(String username) {
+      //Hacemos una query para que nos retorne todos los datos de un usuario si lo encuentra
+      
+    final String sql = 
+        "SELECT u.id, u.username, u.rol, " +
+        "COALESCE(" +
+        "  NULLIF(TRIM(CONCAT_WS(' ', p.nombre1,p.nombre2,p.apellido1,p.apellido2)), '')," +
+        "  NULLIF(TRIM(CONCAT_WS(' ', d.nombre1,d.nombre2,d.apellido1,d.apellido2)), '')," +
+        "  u.username" +
+        ") AS nombre " +
+        "FROM Usuario u " +
+        "LEFT JOIN Paciente p ON p.usuario_id = u.id " +
+        "LEFT JOIN Doctor   d ON d.usuario_id = u.id " +
+        "WHERE u.username = ?";
+    
+    //Hacemos la respectiva conexion y busqueda
+    try (Connection cn = Db.get();
+         PreparedStatement ps = cn.prepareStatement(sql)) {
+      ps.setString(1, username);
+      try (ResultSet rs = ps.executeQuery()) { 
+        if (rs.next()) {
+          return new User(
+              rs.getInt("id"),
+              rs.getString("username"),
+              rs.getString("nombre"),
+              rs.getString("rol")
+          );
+        }
+        return null;
+      }
+    } catch (SQLException e) {
+      throw new RuntimeException("Error buscando usuario", e); //Si hay error al establecer la conexion llama a este metodo
+    }
+  }
+
+  //Verificamos la contraseña de un usuario
+  public boolean VerfPassword(String username, String passwordPlano) {
+    //Buscamos en la tabla usuario el username y buscamos que la contraseña coincida
     final String sql = "SELECT password FROM Usuario WHERE username = ?";
-    try (Connection cn = Db.get(); PreparedStatement ps = cn.prepareStatement(sql)) {
+    //Ejecutamos la solicitud
+    try (Connection cn = Db.get();
+         PreparedStatement ps = cn.prepareStatement(sql)) {
       ps.setString(1, username);
       try (ResultSet rs = ps.executeQuery()) {
-        if (!rs.next()) return false;
-        String pw = rs.getString(1);
-        return (pw != null && pw.equals(password));
+        if (!rs.next()) return false; // si no hay filas para mostrar entonces retorna flaso sino continua
+        String passDb = rs.getString("password"); //Aca obtenemos la contraseña en plano
+        return passDb != null && passDb.equals(passwordPlano); //En este apartado verificamos que la contraseña no sea nula y que sea igual a la que le pasamos
       }
     } catch (SQLException e) {
-      throw new RuntimeException("Error verificando password: " + e.getMessage(), e);
+      throw new RuntimeException("Error verificando password", e);
     }
   }
 
-  public Integer pacienteIdPorUsuarioId(int usuarioId) {
+  // Devuelve paciente_id por usuario_id, o null si no está enlazado
+  public Integer pacienteIdPorUsuario(int usuarioId) {
+    //Busca un usuario si contiene el rol paciente en la tabla usuario_id
     final String sql = "SELECT id FROM Paciente WHERE usuario_id = ?";
-    try (Connection cn = Db.get(); PreparedStatement ps = cn.prepareStatement(sql)) {
+    //Hacemos la busqueda
+    try (Connection cn = Db.get();
+         PreparedStatement ps = cn.prepareStatement(sql)) {
       ps.setInt(1, usuarioId);
-      try (ResultSet rs = ps.executeQuery()) { return rs.next() ? rs.getInt(1) : null; }
+      try (ResultSet rs = ps.executeQuery()) {
+        return rs.next() ? rs.getInt(1) : null;
+      }
     } catch (SQLException e) {
-      throw new RuntimeException("Error consultando paciente_id: " + e.getMessage(), e);
+      throw new RuntimeException("Error resolviendo paciente por usuario", e);
     }
   }
 
-  public Integer doctorIdPorUsuarioId(int usuarioId) {
+  // Devuelve doctor_id por usuario_id, o null si no está enlazado.
+  public Integer doctorIdPorUsuario(int usuarioId) {
+    //Busca un usuario si contiene el rol paciente en la tabla usuario_id
     final String sql = "SELECT id FROM Doctor WHERE usuario_id = ?";
-    try (Connection cn = Db.get(); PreparedStatement ps = cn.prepareStatement(sql)) {
+    //Hacemos la busqueda
+    try (Connection cn = Db.get();
+         PreparedStatement ps = cn.prepareStatement(sql)) {
       ps.setInt(1, usuarioId);
-      try (ResultSet rs = ps.executeQuery()) { return rs.next() ? rs.getInt(1) : null; }
+      try (ResultSet rs = ps.executeQuery()) {
+        return rs.next() ? rs.getInt(1) : null;
+      }
     } catch (SQLException e) {
-      throw new RuntimeException("Error consultando doctor_id: " + e.getMessage(), e);
+      throw new RuntimeException("Error resolviendo doctor por usuario", e);
     }
-  }
-
-  public int abrirSesion(int usuarioId) {
-    return new SesionDaoJdbc().abrirSesion(usuarioId);
-  }
-  public void cerrarSesion(int sesionId) {
-    new SesionDaoJdbc().cerrarSesion(sesionId);
   }
 }
