@@ -6,20 +6,21 @@ import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.List;
 
-/** DAO JDBC para tabla Cita */
+//Clase cita
 public class CitaDaoJdbc {
-
+  //Clase anidada para mostrar elementos de una agenda
   public static final class AgendaItem {
     public final int id;
     public final String hora;
     public final String paciente;
     public final String estado;
     public final String observacion;
+    
     public AgendaItem(int id, String hora, String paciente, String estado, String observacion) {
       this.id = id; this.hora = hora; this.paciente = paciente; this.estado = estado; this.observacion = observacion;
     }
   }
-
+  //Clase anidada para mostrar los elementos de una cita
   public static final class CitaPacItem {
     public final int id;
     public final String fecha;
@@ -27,12 +28,13 @@ public class CitaDaoJdbc {
     public final String doctor;
     public final String estado;
     public final String observacion;
+    
     public CitaPacItem(int id, String fecha, String hora, String doctor, String estado, String obs) {
       this.id = id; this.fecha = fecha; this.hora = hora; this.doctor = doctor; this.estado = estado; this.observacion = obs;
     }
   }
 
-  // Agenda del doctor por CÉDULA
+  // Agenda del doctor por cedula
   public List<AgendaItem> agendaDeDoctor(String cedulaDoctor, LocalDate fecha) {
     String sql = """
       SELECT c.id,
@@ -50,6 +52,7 @@ public class CitaDaoJdbc {
       ORDER BY c.hora
       """;
     List<AgendaItem> out = new ArrayList<>();
+    //Conexion con la base de datos y envio de solicitud
     try (Connection cn = Db.get(); PreparedStatement ps = cn.prepareStatement(sql)) {
       ps.setString(1, cedulaDoctor);
       ps.setDate(2, Date.valueOf(fecha));
@@ -70,9 +73,10 @@ public class CitaDaoJdbc {
     }
   }
 
-  // Crear cita por IDs internos (utilidad común)
+  // Crear cita por IDs
   public int crear(int pacienteId, int doctorId, LocalDate fecha, LocalTime hora, String estado, String obs) {
     String sql = "INSERT INTO Cita (paciente_id, doctor_id, fecha, hora, estado, observacion) VALUES (?,?,?,?,?,?)";
+    //Insertamos datos en cita y generamos una clave autoincremental
     try (Connection cn = Db.get(); PreparedStatement ps = cn.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
       ps.setInt(1, pacienteId);
       ps.setInt(2, doctorId);
@@ -90,7 +94,7 @@ public class CitaDaoJdbc {
     }
   }
 
-  // Crear por CÉDULAS de paciente y doctor
+  // Crear cita con la cedula del paciente y del doctor
   public int crearPorCodigos(String cedulaPaciente, String cedulaDoctor, LocalDate fecha, LocalTime hora, String estado, String obs) {
     String sql = """
       INSERT INTO Cita (paciente_id, doctor_id, fecha, hora, estado, observacion)
@@ -129,7 +133,7 @@ public class CitaDaoJdbc {
     }
   }
 
-  // Listar citas del paciente (opcionalmente entre fechas)
+  // Listar citas del paciente
   public List<CitaPacItem> citasDePaciente(int pacienteId, LocalDate from, LocalDate to) {
     String base = """
       SELECT c.id,
@@ -146,7 +150,6 @@ public class CitaDaoJdbc {
     if (from != null) sb.append(" AND c.fecha >= ?");
     if (to   != null) sb.append(" AND c.fecha <= ?");
     sb.append(" ORDER BY c.fecha, c.hora");
-
     List<CitaPacItem> out = new ArrayList<>();
     try (Connection cn = Db.get(); PreparedStatement ps = cn.prepareStatement(sb.toString())) {
       int i = 1;
@@ -189,6 +192,7 @@ public class CitaDaoJdbc {
     }
   }
 
+  //Cancelamos una cita desde la perspectiva del paciente
   public void cancelarPorPaciente(int citaId, int pacienteId) {
     String sql = "UPDATE Cita SET estado='Cancelada' WHERE id=? AND paciente_id=? AND estado IN ('Pendiente','Confirmada')";
     try (Connection cn = Db.get(); PreparedStatement ps = cn.prepareStatement(sql)) {

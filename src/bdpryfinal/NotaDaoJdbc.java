@@ -30,7 +30,7 @@ public class NotaDaoJdbc {
           if (rs.next()) return rs.getInt(1);
         }
       }
-      try (PreparedStatement ps = cn.prepareStatement(ins, Statement.RETURN_GENERATED_KEYS)) { //Insertamos una nueva fila y 
+      try (PreparedStatement ps = cn.prepareStatement(ins, Statement.RETURN_GENERATED_KEYS)) { //Insertamos una nueva fila
         ps.setInt(1, pacienteId);
         ps.executeUpdate();
         try (ResultSet gk = ps.getGeneratedKeys()) {

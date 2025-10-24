@@ -16,7 +16,7 @@ public class NotaService {
   private final PacienteDaoJdbc pacDao = new PacienteDaoJdbc();
   private final NotaDaoJdbc notaDao = new NotaDaoJdbc();
 
-  //
+  //Abrimos una nota por la cedula del paciente
   public NotaView abrirPorCodigoPaciente(String cedPaciente) {
     if (cedPaciente == null || cedPaciente.isBlank())
       throw new IllegalArgumentException("Código de paciente requerido");

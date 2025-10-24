@@ -24,11 +24,11 @@ public class CitaService {
   }
   
   //Creamos una cita con las cédulas de paciente y doctor
-  public int crearPorCodigos(String codPaciente, String codDoctor, LocalDate fecha, LocalTime hora, String estado, String obs) {
-    if (codPaciente == null || codPaciente.isBlank()) throw new IllegalArgumentException("Código de paciente requerido");
-    if (codDoctor == null || codDoctor.isBlank()) throw new IllegalArgumentException("Código de doctor requerido");
+  public int crearPorCodigos(String cedPaciente, String cedDoctor, LocalDate fecha, LocalTime hora, String estado, String obs) {
+    if (cedPaciente == null || cedPaciente.isBlank()) throw new IllegalArgumentException("Código de paciente requerido");
+    if (cedDoctor == null || cedDoctor.isBlank()) throw new IllegalArgumentException("Código de doctor requerido");
     validarCampos(fecha, hora, estado); //Funcion mas abajo para validar que no sean nulos
-    return citaDao.crearPorCodigos(codPaciente, codDoctor, fecha, hora, estado, obs);
+    return citaDao.crearPorCodigos(cedPaciente, cedDoctor, fecha, hora, estado, obs);
   }
   
   //Actualizamos el estado de la cita
