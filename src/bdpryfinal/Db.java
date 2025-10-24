@@ -13,7 +13,7 @@ public class Db {
     if (shared == null || shared.isClosed()) {
       String url  = "jdbc:mysql://127.0.0.1:3306/clinica?useSSL=false&serverTimezone=UTC";
       String user = "root";
-      String pass = "root";
+      String pass = "";
       shared = DriverManager.getConnection(url, user, pass);
     }
     return shared;
