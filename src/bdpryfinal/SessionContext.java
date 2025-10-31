@@ -10,7 +10,7 @@ public final class SessionContext {
   public static Integer pacienteId; //si rol= Paciente
   public static Integer doctorId; //si rol= Doctor
 
-  //Limpiamos los datos que tengamos almacenados
+  //Limpiamos los datos que tengamos almacenados en sessionContext
   public static void clear() {
     currentUser = null;
     currentSesionId = null;

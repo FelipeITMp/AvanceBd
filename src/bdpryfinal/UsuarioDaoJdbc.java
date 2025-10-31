@@ -22,7 +22,6 @@ public class UsuarioDaoJdbc {
 
 // Metodo para crear un usuario en la base de datos
 public int crearUsuario(String username, String password, String rol) {
-    //Solicitud de creacion de un usuario en la bd
     String sql = "INSERT INTO Usuario (username, password, rol) VALUES (?,?,?)";
     //Creacion del usuario
     try (Connection con = Db.get();

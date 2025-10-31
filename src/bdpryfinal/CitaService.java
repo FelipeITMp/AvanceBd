@@ -31,7 +31,7 @@ public class CitaService {
     return citaDao.crearPorCodigos(cedPaciente, cedDoctor, fecha, hora, estado, obs);
   }
   
-  //Actualizamos el estado de la cita
+  //Actualizamos el estado de la cita seleccionada
   public void actualizarEstado(int citaId, String nuevoEstado) {
     if (citaId <= 0) throw new IllegalArgumentException("Id inválido");
     if (nuevoEstado == null || nuevoEstado.isBlank()) throw new IllegalArgumentException("Estado requerido");

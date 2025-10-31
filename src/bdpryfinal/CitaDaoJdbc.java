@@ -174,7 +174,7 @@ public class CitaDaoJdbc {
     }
   }
 
-  // Crear cita desde la perspectiva del paciente: doctor por CÉDULA
+  // Crear cita desde la perspectiva del paciente
   public int crearPorPaciente(int pacienteId, String cedulaDoctor, LocalDate fecha, LocalTime hora, String observacion) {
     String BDoc = "SELECT id FROM Doctor WHERE cedula = ?";
     try (Connection cn = Db.get()) {

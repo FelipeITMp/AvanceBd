@@ -85,7 +85,7 @@ public class HistoriaDaoJdbc {
     }
   }
 
-  //Agregamos la nota por paciente
+  //Agregamos una nota a la historia clinica de un paciente
   public int agregarNota(int historiaId,
                          String alergias,
                          String medicamentos,

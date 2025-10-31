@@ -127,7 +127,7 @@ public class DoctorDaoJdbc {
     }
   }
 
-  //Verificamos si una cadena es vacia
+  //Verificamos si una cadena es nula y retorna un string vacio
   private static String blankToNull(String s) {
     return (s == null || s.isBlank()) ? null : s;
   }

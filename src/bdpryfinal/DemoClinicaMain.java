@@ -17,17 +17,15 @@ public class DemoClinicaMain {
     var sdao     = new SesionDaoJdbc(); // Abrimos o cerramos sesion
     var historia = new HistoriaService(); //Historia clínica
 
-    // Ayuda para crear la cedula
-    String Ccedula = DateTimeFormatter.ofPattern("yyyyMMddHHmmss").format(java.time.LocalDateTime.now());
 
     // Ingresamos datos a la bd
     String userDoc = "dr.alvarez";
     String passDoc = "segura2025";
-    String cedDoc  = "1718132645" + Ccedula.substring(Ccedula.length()-4);
+    String cedDoc  = "1718132645";
 
     String userPac = "maria.rojas";
     String passPac = "maria2025";
-    String cedPac  = "0923456789" + Ccedula.substring(Ccedula.length()-4);
+    String cedPac  = "0923456789";
 
     Integer sesionId = null; //Inicializamos la sesion como null
 
@@ -41,15 +39,15 @@ public class DemoClinicaMain {
       ddao.insertarPerfilDoctor(uDocId, cedDoc,
           "Diego", "Andrés", "Álvarez", "García",
           "Cardiología", "Sede Centro", "08:00-12:00",
-          "dr.alvarez+"+ "@clinicademo.com",
-          "099" + Ccedula.substring(Ccedula.length()-7),
+          "dr.alvarez"+ "@gmail.com",
+          "09945462125",
           "M"
       );
       //Insertamos el perfil del paciente
       pdao.insertarPerfilPaciente(uPacId, cedPac,
           "María", "Fernanda", "Rojas", "Vega",
-          "maria.rojas+" + "@correo.com",
-          "098" + Ccedula.substring(Ccedula.length()-7),
+          "maria.rojas" + "@gmail.com",
+          "0984454512",
           "F",
           "Av. Libertad 123",
           LocalDate.of(1991, 5, 17)
@@ -74,7 +72,7 @@ public class DemoClinicaMain {
       
       //Creamos una nota para el paciente (bloc de notas)
       var notaView = notas.agregarNotaPorCodigo(cedPac,
-          "El paciente esta bien" );
+          "El paciente esta sano" );
       System.out.println("Id de la nota = "+notaView.notaId+" Cantida de notas = "+notaView.notas.size());
       //System.out.printf("El paciente esta bien",notaView.notaId, notaView.notas.size());
 

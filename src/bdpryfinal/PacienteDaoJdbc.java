@@ -105,7 +105,7 @@ public class PacienteDaoJdbc {
   }
 
 
-  // Buscar por cédula
+  // Buscar un paciente por su cedula
   public PacienteItem encontrarPorCedula(String cedula) {
     final String sql =
         "SELECT id, cedula, " +

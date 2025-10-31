@@ -8,7 +8,7 @@ public class Db {
   //Conexion estatica que va a usar toda la app desde el metodo get()
   private static Connection shared;
 
-  //Creamos la conexion
+  //Creamos la conexion con la bd
   public static Connection get() throws SQLException {
     if (shared == null || shared.isClosed()) {
       String url  = "jdbc:mysql://127.0.0.1:3306/clinica?useSSL=false&serverTimezone=UTC";

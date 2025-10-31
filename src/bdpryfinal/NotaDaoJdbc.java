@@ -69,7 +69,7 @@ public class NotaDaoJdbc {
     }
   }
 
-  //Agregamos una nueva nota
+  //Agregamos una nueva nota para el paciente
   public int agregarNota(int notaId, String texto) {
     if (texto == null || texto.isBlank()) //Si el texto esta en blanco o es vacio entonces genera un error
       throw new IllegalArgumentException("El campo 'texto' es obligatorio");

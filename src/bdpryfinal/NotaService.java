@@ -30,7 +30,7 @@ public class NotaService {
     return new NotaView(p, notaId, notas);
   }
 
-  //Pasamos el codigo del paciente y un texto
+  //Pasamos el codigo del paciente y un texto para pasarlo a la bd
   public NotaView agregarNotaPorCodigo(String cedPaciente, String texto) {
     if (texto == null || texto.isBlank())
       throw new IllegalArgumentException("Texto requerido");

@@ -28,7 +28,7 @@ public class HistoriaService {
     return new HistoriaView(p, hid, notas);
   }
 
-  //Agregamos nota completa
+  //Agregamos nota completa para el paciente
   public HistoriaView agregarNotaPorCodigo(String cedPaciente,
                                            String alergias,
                                            String medicamentos,

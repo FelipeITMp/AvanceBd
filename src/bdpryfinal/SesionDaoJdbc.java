@@ -22,7 +22,7 @@ public class SesionDaoJdbc {
     }
   }
 
-  //
+  
   public void cerrarSesion(int sesionId) {
     //Solicitud para cambiar el estado de sesion a cerrada
     final String sql = "UPDATE Sesion SET estado='Cerrada' WHERE id=?";

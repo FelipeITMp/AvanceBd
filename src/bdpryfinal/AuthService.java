@@ -4,7 +4,7 @@ package bdpryfinal;
 /** Servicio de autenticación */
 public class AuthService {
 
-  //Clase anidada "constante" para almacenar un login
+  //Clase anidada para almacenar un login
   public record LoginResult(UsuarioDaoJdbc.User user, int sesionId, Integer pacienteId, Integer doctorId) {}
 
   private final UsuarioDaoJdbc usuarioDao = new UsuarioDaoJdbc();
@@ -36,7 +36,7 @@ public class AuthService {
     return new LoginResult(u, sesionId, pid, did);
   }
 
-  // Cuando hacemos el logout pasaoms unicamente el id de la sesion y llamamos al metodo del usuario cerrarSesion
+  // Cuando hacemos el logout pasamos unicamente el id de la sesion y llamamos al metodo del usuario cerrarSesion
   public void logout(Integer sesionId) {
     if (sesionId == null) return;
     try { new SesionDaoJdbc().cerrarSesion(sesionId); } catch (Exception ignore) {}
